@@ -67,16 +67,19 @@ Emits: `("credit", "opened")` event.
 ---
 
 ### `draw_credit(env, borrower, amount)`
-Draw funds from an active credit line. 
-
-> ⚠️ Not yet implemented — placeholder for future logic (limit check, token transfer).
+Draw funds from an active credit line. Verifies limit, updates utilized amount, and transfers the protocol token from the contract reserve to the borrower. Caller must be the borrower and must authorize.
 
 ---
 
 ### `repay_credit(env, borrower, amount)`
-Repay drawn funds and accrue interest.
+Repay drawn funds. The borrower must transfer the repayment amount from their account to the contract reserve via the Stellar token contract. The transfer is executed before any state change; if the transfer fails (e.g. insufficient balance or missing authorization), the call reverts and `utilized_amount` is unchanged. The amount applied is capped at the current utilized amount.
 
-> ⚠️ Not yet implemented — placeholder for future logic.
+| Parameter | Type | Description |
+|---|---|---|
+| `borrower` | `Address` | Borrower (must authorize the call and token transfer) |
+| `amount` | `i128` | Nominal repayment; effective transfer is min(amount, utilized_amount) |
+
+Emits: `("credit", "repay")` with `RepaymentEvent` (borrower, amount actually transferred, new utilized amount, timestamp).
 
 ---
 
@@ -121,6 +124,7 @@ Returns the credit line data for a borrower, or `None` if not found. View functi
 | Topic | Event Type Symbol | Emitted By | Description |
 |---|---|---|---|
 | `("credit", "opened")` | `opened` | `open_credit_line` | New credit line opened |
+| `("credit", "repay")` | `repay` | `repay_credit` | Repayment (borrower, amount, new utilized, timestamp) |
 | `("credit", "suspend")` | `suspend` | `suspend_credit_line` | Credit line suspended |
 | `("credit", "closed")` | `closed` | `close_credit_line` | Credit line closed |
 | `("credit", "default")` | `default` | `default_credit_line` | Credit line defaulted |

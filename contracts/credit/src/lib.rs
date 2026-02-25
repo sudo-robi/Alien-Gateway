@@ -206,8 +206,24 @@ impl Credit {
     }
 
     /// Repay credit (borrower).
-    /// Reverts if credit line does not exist, is Closed, or borrower has not authorized.
-    /// Reduces utilized_amount by amount (capped at 0). Emits RepaymentEvent.
+    ///
+    /// Transfers the repayment amount from the borrower to the contract reserve via the Stellar
+    /// token contract. The transfer is executed before any state change so that a failed transfer
+    /// (e.g. insufficient balance or allowance) reverts the entire call and prevents griefing.
+    ///
+    /// The amount applied to the credit line is capped at the current utilized amount; any excess
+    /// is not pulled from the borrower. Utilized amount is then decreased and a RepaymentEvent
+    /// is emitted.
+    ///
+    /// # Arguments
+    /// * `borrower` - Must have authorized the call and the token transfer (same invocation).
+    /// * `amount` - Nominal repayment amount; effective transfer is min(amount, utilized_amount).
+    ///
+    /// # Panics
+    /// * "Credit line not found" – no credit line for borrower
+    /// * "credit line is closed" – line is closed
+    /// * "amount must be positive" – amount <= 0
+    /// * Token transfer fails if borrower has insufficient balance or has not authorized the transfer.
     pub fn repay_credit(env: Env, borrower: Address, amount: i128) {
         set_reentrancy_guard(&env);
         borrower.require_auth();
@@ -233,6 +249,17 @@ impl Credit {
             panic!("amount must be positive");
         }
 
+        let effective_repay = amount.min(credit_line.utilized_amount);
+        if effective_repay > 0 {
+            let token_address: Address = env
+                .storage()
+                .instance()
+                .get(&token_key(&env))
+                .expect("token not configured");
+            let token_client = token::Client::new(&env, &token_address);
+            token_client.transfer(&borrower, &env.current_contract_address(), &effective_repay);
+        }
+
         let new_utilized = credit_line.utilized_amount.saturating_sub(amount).max(0);
         credit_line.utilized_amount = new_utilized;
         env.storage().persistent().set(&borrower, &credit_line);
@@ -242,14 +269,13 @@ impl Credit {
             &env,
             RepaymentEvent {
                 borrower: borrower.clone(),
-                amount,
+                amount: effective_repay,
                 new_utilized_amount: new_utilized,
                 timestamp,
             },
         );
 
         clear_reentrancy_guard(&env);
-        // TODO: accept token from borrower
     }
 
     /// Update risk parameters for an existing credit line (admin only).
@@ -1068,7 +1094,100 @@ mod test {
         client.repay_credit(&borrower, &100);
     }
 
-    // ── admin-only enforcement ────────────────────────────────────────────────
+    #[test]
+    fn test_repay_credit_transfers_tokens_from_borrower_to_contract() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let borrower = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let contract_id = env.register(Credit, ());
+        let (token_address, _sac) = setup_token(&env, &contract_id, 1_000);
+        let client = CreditClient::new(&env, &contract_id);
+        client.init(&admin, &token_address);
+        client.open_credit_line(&borrower, &1_000, &300_u32, &70_u32);
+        client.draw_credit(&borrower, &400);
+        let token_client = token::Client::new(&env, &token_address);
+        let borrower_before = token_client.balance(&borrower);
+        let contract_before = token_client.balance(&contract_id);
+        client.repay_credit(&borrower, &200);
+        assert_eq!(token_client.balance(&borrower), borrower_before - 200);
+        assert_eq!(token_client.balance(&contract_id), contract_before + 200);
+    }
+
+    #[test]
+    fn test_repay_credit_transfer_capped_at_utilized() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let borrower = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let contract_id = env.register(Credit, ());
+        let (token_address, _sac) = setup_token(&env, &contract_id, 1_000);
+        let client = CreditClient::new(&env, &contract_id);
+        client.init(&admin, &token_address);
+        client.open_credit_line(&borrower, &1_000, &300_u32, &70_u32);
+        client.draw_credit(&borrower, &100);
+        let token_client = token::Client::new(&env, &token_address);
+        let contract_before = token_client.balance(&contract_id);
+        client.repay_credit(&borrower, &500);
+        assert_eq!(token_client.balance(&contract_id), contract_before + 100);
+        assert_eq!(
+            client.get_credit_line(&borrower).unwrap().utilized_amount,
+            0
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_repay_credit_insufficient_balance_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let borrower = Address::generate(&env);
+        let other = Address::generate(&env);
+        let (client, token_address, _admin) =
+            setup_contract_with_credit_line(&env, &borrower, 1_000, 1_000);
+        client.draw_credit(&borrower, &200);
+        let token_client = token::Client::new(&env, &token_address);
+        token_client.transfer(&borrower, &other, &150);
+        client.repay_credit(&borrower, &200);
+    }
+
+    #[test]
+    fn test_repay_credit_requires_borrower_auth() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let borrower = Address::generate(&env);
+        let (client, _token, _admin) =
+            setup_contract_with_credit_line(&env, &borrower, 1_000, 1_000);
+        client.draw_credit(&borrower, &100);
+        client.repay_credit(&borrower, &50);
+        assert!(
+            env.auths().iter().any(|(addr, _)| *addr == borrower),
+            "repay_credit must require borrower authorization"
+        );
+    }
+
+    #[test]
+    fn test_repay_credit_on_suspended_line_transfers_and_updates() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let borrower = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let contract_id = env.register(Credit, ());
+        let (token_address, _sac) = setup_token(&env, &contract_id, 1_000);
+        let client = CreditClient::new(&env, &contract_id);
+        client.init(&admin, &token_address);
+        client.open_credit_line(&borrower, &1_000, &300_u32, &70_u32);
+        client.draw_credit(&borrower, &300);
+        client.suspend_credit_line(&borrower);
+        let token_client = token::Client::new(&env, &token_address);
+        let contract_before = token_client.balance(&contract_id);
+        client.repay_credit(&borrower, &100);
+        assert_eq!(token_client.balance(&contract_id), contract_before + 100);
+        assert_eq!(
+            client.get_credit_line(&borrower).unwrap().utilized_amount,
+            200
+        );
+    }
 
     #[test]
     #[should_panic]
