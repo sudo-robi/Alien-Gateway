@@ -1755,4 +1755,93 @@ mod test {
         token_admin_client.mint(&contract_id, &50_i128);
         client.draw_credit(&borrower, &100_i128);
     }
+
+    // ========== borrower-only draw_credit and repay_credit ==========
+
+    /// draw_credit must revert when the caller has not authorized as the borrower.
+    /// No delegated spender is set, so only the borrower may draw.
+    #[test]
+    #[should_panic]
+    fn test_draw_credit_reverts_when_caller_is_not_borrower() {
+        let env = Env::default();
+        // Deliberately omit mock_all_auths(): borrower.require_auth() must fail.
+        let admin = Address::generate(&env);
+        let borrower = Address::generate(&env);
+
+        let contract_id = env.register(Credit, ());
+        let client = CreditClient::new(&env, &contract_id);
+
+        client.init(&admin);
+        client.open_credit_line(&borrower, &1000_i128, &300_u32, &70_u32);
+
+        // Attempt draw without borrower authorization — must panic.
+        client.draw_credit(&borrower, &200_i128);
+    }
+
+    /// repay_credit must revert when the caller has not authorized as the borrower.
+    /// No delegated spender is set, so only the borrower may repay.
+    #[test]
+    #[should_panic]
+    fn test_repay_credit_reverts_when_caller_is_not_borrower() {
+        let env = Env::default();
+        // Deliberately omit mock_all_auths(): borrower.require_auth() must fail.
+        let admin = Address::generate(&env);
+        let borrower = Address::generate(&env);
+
+        let contract_id = env.register(Credit, ());
+        let client = CreditClient::new(&env, &contract_id);
+
+        client.init(&admin);
+        client.open_credit_line(&borrower, &1000_i128, &300_u32, &70_u32);
+
+        // Attempt repay without borrower authorization — must panic.
+        client.repay_credit(&borrower, &100_i128);
+    }
+
+    /// draw_credit succeeds when the caller is the authorized borrower.
+    #[test]
+    fn test_draw_credit_succeeds_when_caller_is_borrower() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let borrower = Address::generate(&env);
+
+        let contract_id = env.register(Credit, ());
+        let client = CreditClient::new(&env, &contract_id);
+
+        client.init(&admin);
+        client.open_credit_line(&borrower, &1000_i128, &300_u32, &70_u32);
+
+        // Borrower authorized — draw should succeed.
+        client.draw_credit(&borrower, &400_i128);
+
+        let credit_line = client.get_credit_line(&borrower).unwrap();
+        assert_eq!(credit_line.utilized_amount, 400);
+        assert_eq!(credit_line.status, CreditStatus::Active);
+    }
+
+    /// repay_credit succeeds when the caller is the authorized borrower.
+    #[test]
+    fn test_repay_credit_succeeds_when_caller_is_borrower() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let borrower = Address::generate(&env);
+
+        let contract_id = env.register(Credit, ());
+        let client = CreditClient::new(&env, &contract_id);
+
+        client.init(&admin);
+        client.open_credit_line(&borrower, &1000_i128, &300_u32, &70_u32);
+        client.draw_credit(&borrower, &500_i128);
+
+        // Borrower authorized — repay should succeed.
+        client.repay_credit(&borrower, &200_i128);
+
+        let credit_line = client.get_credit_line(&borrower).unwrap();
+        assert_eq!(credit_line.utilized_amount, 300);
+        assert_eq!(credit_line.status, CreditStatus::Active);
+    }
 }
