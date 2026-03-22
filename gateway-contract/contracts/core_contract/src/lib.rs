@@ -7,19 +7,13 @@ use soroban_sdk::{
 #[contract]
 pub struct Contract;
 
-//
-// ---------------- STORAGE KEY ----------------
-//
-
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
     Resolver(BytesN<32>),
 }
 
-//
-// ---------------- STORED VALUE ----------------
-//
+
 
 #[contracttype]
 #[derive(Clone)]
@@ -28,9 +22,7 @@ pub struct ResolveData {
     pub memo: Option<u64>,
 }
 
-//
-// ---------------- ERRORS ----------------
-//
+
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -38,9 +30,7 @@ pub enum ResolverError {
     NotFound = 1,
 }
 
-//
-// ---------------- CONTRACT IMPLEMENTATION ----------------
-//
+
 
 #[contractimpl]
 impl Contract {
