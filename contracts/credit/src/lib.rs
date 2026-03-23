@@ -306,7 +306,6 @@ impl Credit {
 
         env.storage().persistent().set(&borrower, &credit_line);
 
-        env.events().publish(
         publish_credit_line_event(
             &env,
             (symbol_short!("credit"), symbol_short!("opened")),
@@ -319,7 +318,6 @@ impl Credit {
                 risk_score,
             },
         );
-    }
 
 
 
@@ -357,37 +355,7 @@ impl Credit {
 
     }
 
-    /// Draw funds from an active credit line.
-    ///
-    /// Called by the borrower to borrow against their credit limit.
-    ///
-    /// # Parameters
-    /// - `borrower`: The borrower's address.
-    /// - `amount`: Amount to draw. Must not exceed available credit.
-    ///
-    /// # Note
-    /// Not yet implemented. Planned logic: validate amount against available
-    /// credit, update `utilized_amount`, transfer tokens to borrower.
-    pub fn draw_credit(_env: Env, _borrower: Address, _amount: i128) -> () {
-        // TODO: check limit, update utilized_amount, transfer token to borrower
-        ()
-    }
 
-    /// Repay outstanding credit and accrue interest.
-    ///
-    /// Called by the borrower to reduce their `utilized_amount`.
-    ///
-    /// # Parameters
-    /// - `borrower`: The borrower's address.
-    /// - `amount`: Amount to repay.
-    ///
-    /// # Note
-    /// Not yet implemented. Planned logic: accept token transfer, reduce
-    /// `utilized_amount`, accrue interest on outstanding balance.
-    pub fn repay_credit(_env: Env, _borrower: Address, _amount: i128) -> () {
-        // TODO: accept token, reduce utilized_amount, accrue interest
-        ()
-    }
 
     /// Update risk parameters for an existing credit line.
     ///
@@ -791,9 +759,7 @@ impl Credit {
     ///
     /// # Events
     /// Emits a `("credit", "suspend")` [`CreditLineEvent`].
-    pub fn suspend_credit_line(env: Env, borrower: Address) -> () {
-    /// Suspend a credit line (admin only).
-    /// Emits a CreditLineSuspended event.
+    /// Suspend a credit line temporarily (admin only).
     pub fn suspend_credit_line(env: Env, borrower: Address) {
         require_admin_auth(&env);
         let mut credit_line: CreditLineData = env
@@ -809,7 +775,6 @@ impl Credit {
         credit_line.status = CreditStatus::Suspended;
         env.storage().persistent().set(&borrower, &credit_line);
 
-        env.events().publish(
         publish_credit_line_event(
             &env,
             (symbol_short!("credit"), symbol_short!("suspend")),
@@ -824,20 +789,7 @@ impl Credit {
         );
     }
 
-    /// Permanently close a credit line.
-    ///
-    /// Can be called by admin or by the borrower when `utilized_amount` is 0.
-    /// Once closed, the credit line cannot be reopened.
-    ///
-    /// # Parameters
-    /// - `borrower`: The borrower's address.
-    ///
-    /// # Panics
-    /// - If no credit line exists for the given borrower.
-    ///
-    /// # Events
-    /// Emits a `("credit", "closed")` [`CreditLineEvent`].
-    pub fn close_credit_line(env: Env, borrower: Address) -> () {
+    /// Close a credit line. Callable by admin (force-close) or by borrower when utilization is zero.
     /// Close a credit line. Callable by admin (force-close) or by borrower when utilization is zero.
     /// Allowed from Active, Suspended, or Defaulted. Idempotent if already Closed.
     ///
@@ -899,7 +851,6 @@ impl Credit {
         credit_line.status = CreditStatus::Closed;
         env.storage().persistent().set(&borrower, &credit_line);
 
-        env.events().publish(
         publish_credit_line_event(
             &env,
             (symbol_short!("credit"), symbol_short!("closed")),
@@ -912,7 +863,6 @@ impl Credit {
                 risk_score: credit_line.risk_score,
             },
         );
-    }
 
     /// Mark a credit line as defaulted.
     ///
@@ -945,7 +895,6 @@ impl Credit {
         credit_line.status = CreditStatus::Defaulted;
         env.storage().persistent().set(&borrower, &credit_line);
 
-        env.events().publish(
         publish_credit_line_event(
             &env,
             (symbol_short!("credit"), symbol_short!("default")),
@@ -958,7 +907,6 @@ impl Credit {
                 risk_score: credit_line.risk_score,
             },
         );
-    }
 
     /// Reinstate a defaulted credit line to Active (admin only).
     ///
@@ -1014,14 +962,19 @@ impl Credit {
 
 #[cfg(test)]
 mod test {
+    soroban_sdk::contractimpl! { export! CreditImpl }
+
+    use soroban_sdk::contractclient::ContractClient;
     use super::*;
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::testutils::Events as _;
     use soroban_sdk::token;
     use soroban_sdk::contractclient::ContractClient;
-    use soroban_sdk::testutils::Events;
+use soroban_sdk::testutils::Events;
     use soroban_sdk::token::StellarAssetClient;
-    use soroban_sdk::{TryFromVal, TryIntoVal};
+    use soroban_sdk::{Symbol, TryFromVal, TryIntoVal};
+
+    type CreditClient<'a> = soroban_sdk::contractclient::ContractClient<'a, CreditImpl>;
 
     fn setup_test(env: &Env) -> (Address, Address, Address) {
         env.mock_all_auths();
