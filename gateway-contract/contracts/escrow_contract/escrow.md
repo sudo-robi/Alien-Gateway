@@ -1,19 +1,12 @@
-# 🏺 Escrow Contract
+# Escrow Contract Specification
 
-The Escrow contract provides a secure mechanism for scheduling and executing payments between identities on the Alien Gateway. It uses a vault-based system where funds are reserved before being released.
+The Escrow contract facilitates time-locked payments between identity-committed vaults. Funds are reserved at the time of scheduling and released only after a specified ledger timestamp.
 
-## Features
+## Function: `schedule_payment`
 
-- **Scheduled Payments**: Lock funds with a future release timestamp.
-- **Privacy-First**: Uses commitment identifiers (`BytesN<32>`) for senders and recipients.
-- **Vault Security**: Funds are held in a contract-managed vault with strict ownership verification.
+Schedules a transfer of funds from the sender's vault to a recipient.
 
-## Interface
-
-### `schedule_payment`
-
-Schedules a payment from a user's vault to another identity.
-
+### Interface
 ```rust
 pub fn schedule_payment(
     env: Env,
@@ -21,29 +14,29 @@ pub fn schedule_payment(
     to: BytesN<32>,
     amount: i128,
     release_at: u64,
-) -> u32
+) -> Result<u32, EscrowError>
 ```
 
-**Parameters:**
+### Requirements & Validation
+- **Authentication**: The caller must provide a valid signature for the `owner` address associated with the `from` vault (`Address::require_auth`).
+- **Amount**: Must be strictly positive (`amount > 0`).
+- **Balance**: The `from` vault must have enough funds (`balance >= amount`).
+- **Timing (Scheduling)**: The `release_at` value must be strictly greater than the current ledger timestamp (`release_at > env.ledger().timestamp()`). 
+- **Timing (Execution)**: Execution is permitted only when the current ledger timestamp is equal to or greater than the `release_at` value (`now >= release_at`).
 
-- `from`: The commitment identifying the sender's vault.
-- `to`: The commitment identifying the recipient.
-- `amount`: The amount of tokens to reserve.
-- `release_at`: The ledger timestamp at or after which the payment can be executed.
+### State Changes
+1. **Balance Reservation**: The requested `amount` is immediately deducted from the `from` vault's `VaultState.balance`.
+2. **ID Generation**: A unique `payment_id` is generated using a global auto-incrementing counter.
+3. **Storage**: A `ScheduledPayment` record is created in persistent storage with `executed: false`.
 
-**Requirements:**
+### Implementation Details
+- **Vaults**: Stored in persistent storage indexed by `DataKey::Vault(BytesN<32>)`.
+- **Payments**: Stored in persistent storage indexed by `DataKey::ScheduledPayment(u32)`.
+- **Counter**: Maintained in instance storage at `DataKey::PaymentCounter`.
+- **Events**: Emits a `SCHED_PAY` event (topics: `SCHED_PAY`, `payment_id`).
 
-- The caller must be authenticated as the owner of the `from` vault.
-- `amount` must be greater than 0.
-- `amount` must be less than or equal to the current vault balance.
-- `release_at` must be in the future (relative to the current ledger timestamp).
-
-**Returns:**
-
-- `payment_id`: A unique, incrementing identifier for the scheduled payment.
-
-## Security
-
-- **Authentication**: All sensitive operations require authority from the vault owner via `vault.owner.require_auth()`.
-- **Integrity**: Funds are immediately reserved in the vault balance at scheduling time by decrementing `VaultState.balance`, preventing double-spending.
-- **Validation**: Strict checks on timestamp and amount ensure no past-dated or invalid payments are created.
+### Security Considerations
+- **Reentrancy**: Not applicable as no external calls are made during scheduling.
+- **Authorization**: Hardened by host-level `require_auth` on the vault owner.
+- **Overflow**: Payment counter increments are protected by `checked_add` with explicit error handling.
+- **Fairness**: Funds are locked immediately upon scheduling, preventing double-spending from the same vault balance.
