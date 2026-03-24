@@ -4,8 +4,9 @@ use crate::errors::EscrowError;
 use crate::types::{AutoPay, DataKey, ScheduledPayment, VaultState};
 use crate::EscrowContract;
 use crate::EscrowContractClient;
-use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{Address, BytesN, Env};
+use soroban_sdk::testutils::{Address as _, Events as _, Ledger};
+use soroban_sdk::token::{Client as TokenClient, StellarAssetClient};
+use soroban_sdk::{Address, BytesN, Env, Error};
 
 fn setup_test(
     env: &Env,
@@ -13,18 +14,20 @@ fn setup_test(
     Address,
     EscrowContractClient<'_>,
     Address,
+    Address,
     BytesN<32>,
     BytesN<32>,
 ) {
     let contract_id = env.register(EscrowContract, ());
     let client = EscrowContractClient::new(env, &contract_id);
 
-    let token = Address::generate(env);
+    let token_admin = Address::generate(env);
+    let token = env.register_stellar_asset_contract(token_admin.clone());
 
     let from = BytesN::from_array(env, &[0u8; 32]);
     let to = BytesN::from_array(env, &[1u8; 32]);
 
-    (contract_id, client, token, from, to)
+    (contract_id, client, token, token_admin, from, to)
 }
 
 fn create_vault(
@@ -60,7 +63,7 @@ fn read_vault(env: &Env, contract_id: &Address, id: &BytesN<32>) -> VaultState {
 fn test_schedule_payment_success() {
     let env = Env::default();
     env.mock_all_auths();
-    let (contract_id, client, token, from, to) = setup_test(&env);
+    let (contract_id, client, token, _, from, to) = setup_test(&env);
 
     let initial_balance = 1000i128;
     let amount = 400i128;
@@ -106,7 +109,7 @@ fn test_schedule_payment_success() {
 fn test_schedule_payment_past_release_panics() {
     let env = Env::default();
     env.mock_all_auths();
-    let (contract_id, client, _, from, to) = setup_test(&env);
+    let (contract_id, client, _, _, from, to) = setup_test(&env);
 
     create_vault(
         &env,
@@ -127,7 +130,7 @@ fn test_schedule_payment_past_release_panics() {
 fn test_schedule_payment_insufficient_balance_panics() {
     let env = Env::default();
     env.mock_all_auths();
-    let (contract_id, client, _, from, to) = setup_test(&env);
+    let (contract_id, client, _, _, from, to) = setup_test(&env);
 
     create_vault(
         &env,
@@ -148,7 +151,7 @@ fn test_schedule_payment_insufficient_balance_panics() {
 fn test_schedule_payment_returns_incrementing_ids() {
     let env = Env::default();
     env.mock_all_auths();
-    let (contract_id, client, token, from, to) = setup_test(&env);
+    let (contract_id, client, token, _, from, to) = setup_test(&env);
 
     create_vault(
         &env,
@@ -168,83 +171,54 @@ fn test_schedule_payment_returns_incrementing_ids() {
 }
 
 #[test]
-fn test_auto_pay_setup_success() {
+fn test_execute_scheduled_success_transfers_and_marks_executed() {
     let env = Env::default();
     env.mock_all_auths();
-    let (contract_id, client, token, from, to) = setup_test(&env);
+    let (contract_id, client, token, _token_admin, from, to) = setup_test(&env);
 
-    create_vault(
-        &env,
-        &contract_id,
-        &from,
-        &Address::generate(&env),
-        &token,
-        1000,
-    );
+    let from_owner = Address::generate(&env);
+    let to_owner = Address::generate(&env);
+    let amount = 400i128;
+    let release_at = 2000u64;
 
-    client.setup_auto_pay(&from, &to, &100i128, &10u64);
+    create_vault(&env, &contract_id, &from, &from_owner, &token, 1000);
+    create_vault(&env, &contract_id, &to, &to_owner, &token, 0);
+
+    env.ledger().set_timestamp(1000);
+    let payment_id = client.schedule_payment(&from, &to, &amount, &release_at);
+
+    let token_admin_client = StellarAssetClient::new(&env, &token);
+    token_admin_client.mint(&contract_id, &amount);
+
+    env.ledger().set_timestamp(2500);
+    client.execute_scheduled(&payment_id);
+
+    let events = env.events().all();
+    let escrow_events = events
+        .iter()
+        .filter(|(event_contract, _, _)| event_contract == &contract_id)
+        .count();
+    assert_eq!(escrow_events, 1);
 
     env.as_contract(&contract_id, || {
-        let auto_pay: AutoPay = env
+        let payment: ScheduledPayment = env
             .storage()
             .persistent()
-            .get(&DataKey::AutoPay(from.clone()))
+            .get(&DataKey::ScheduledPayment(payment_id))
             .unwrap();
-        assert_eq!(auto_pay.to, to);
-        assert_eq!(auto_pay.amount, 100);
-        assert_eq!(auto_pay.interval, 10);
-        assert_eq!(auto_pay.last_paid, 0);
+        assert_eq!(payment.executed, true);
     });
+
+    let token_client = TokenClient::new(&env, &token);
+    assert_eq!(token_client.balance(&to_owner), amount);
+    assert_eq!(token_client.balance(&contract_id), 0);
 }
 
 #[test]
-fn test_auto_pay_trigger_success() {
+fn test_execute_scheduled_rejects_early() {
     let env = Env::default();
     env.mock_all_auths();
-    let (contract_id, client, token, from, to) = setup_test(&env);
-
-    create_vault(
-        &env,
-        &contract_id,
-        &from,
-        &Address::generate(&env),
-        &token,
-        1000,
-    );
-    create_vault(
-        &env,
-        &contract_id,
-        &to,
-        &Address::generate(&env),
-        &token,
-        50,
-    );
-
-    client.setup_auto_pay(&from, &to, &200i128, &10u64);
-    env.ledger().set_timestamp(10);
-    client.trigger_auto_pay(&from);
-
-    let from_vault = read_vault(&env, &contract_id, &from);
-    let to_vault = read_vault(&env, &contract_id, &to);
-    assert_eq!(from_vault.balance, 800);
-    assert_eq!(to_vault.balance, 250);
-
-    env.as_contract(&contract_id, || {
-        let auto_pay: AutoPay = env
-            .storage()
-            .persistent()
-            .get(&DataKey::AutoPay(from.clone()))
-            .unwrap();
-        assert_eq!(auto_pay.last_paid, 10);
-    });
-}
-
-#[test]
-#[should_panic]
-fn test_auto_pay_early_trigger_panics() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (contract_id, client, token, from, to) = setup_test(&env);
+    let (contract_id, client, token, _, from, to) = setup_test(&env);
 
     create_vault(
         &env,
@@ -256,17 +230,23 @@ fn test_auto_pay_early_trigger_panics() {
     );
     create_vault(&env, &contract_id, &to, &Address::generate(&env), &token, 0);
 
-    client.setup_auto_pay(&from, &to, &100i128, &10u64);
-    env.ledger().set_timestamp(9);
-    client.trigger_auto_pay(&from);
+    env.ledger().set_timestamp(1000);
+    let payment_id = client.schedule_payment(&from, &to, &100, &2000);
+
+    let result = client.try_execute_scheduled(&payment_id);
+    assert!(matches!(
+        result,
+        Err(Ok(err)) if err == Error::from_contract_error(EscrowError::PaymentNotYetDue as u32)
+    ));
 }
 
 #[test]
-fn test_auto_pay_second_cycle_success() {
+fn test_execute_scheduled_rejects_double_execution() {
     let env = Env::default();
     env.mock_all_auths();
-    let (contract_id, client, token, from, to) = setup_test(&env);
+    let (contract_id, client, token, _token_admin, from, to) = setup_test(&env);
 
+    let to_owner = Address::generate(&env);
     create_vault(
         &env,
         &contract_id,
@@ -275,48 +255,20 @@ fn test_auto_pay_second_cycle_success() {
         &token,
         1000,
     );
-    create_vault(&env, &contract_id, &to, &Address::generate(&env), &token, 0);
+    create_vault(&env, &contract_id, &to, &to_owner, &token, 0);
 
-    client.setup_auto_pay(&from, &to, &150i128, &10u64);
+    env.ledger().set_timestamp(1000);
+    let payment_id = client.schedule_payment(&from, &to, &100, &1500);
 
-    env.ledger().set_timestamp(10);
-    client.trigger_auto_pay(&from);
-    env.ledger().set_timestamp(20);
-    client.trigger_auto_pay(&from);
+    let token_admin_client = StellarAssetClient::new(&env, &token);
+    token_admin_client.mint(&contract_id, &100);
 
-    let from_vault = read_vault(&env, &contract_id, &from);
-    let to_vault = read_vault(&env, &contract_id, &to);
-    assert_eq!(from_vault.balance, 700);
-    assert_eq!(to_vault.balance, 300);
+    env.ledger().set_timestamp(1600);
+    client.execute_scheduled(&payment_id);
 
-    env.as_contract(&contract_id, || {
-        let auto_pay: AutoPay = env
-            .storage()
-            .persistent()
-            .get(&DataKey::AutoPay(from.clone()))
-            .unwrap();
-        assert_eq!(auto_pay.last_paid, 20);
-    });
-}
-
-#[test]
-#[should_panic]
-fn test_auto_pay_insufficient_balance_panics() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (contract_id, client, token, from, to) = setup_test(&env);
-
-    create_vault(
-        &env,
-        &contract_id,
-        &from,
-        &Address::generate(&env),
-        &token,
-        90,
-    );
-    create_vault(&env, &contract_id, &to, &Address::generate(&env), &token, 0);
-
-    client.setup_auto_pay(&from, &to, &100i128, &10u64);
-    env.ledger().set_timestamp(10);
-    client.trigger_auto_pay(&from);
+    let result = client.try_execute_scheduled(&payment_id);
+    assert!(matches!(
+        result,
+        Err(Ok(err)) if err == Error::from_contract_error(EscrowError::PaymentAlreadyExecuted as u32)
+    ));
 }
