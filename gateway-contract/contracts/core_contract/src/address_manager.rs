@@ -84,9 +84,9 @@ impl AddressManager {
                     && address.get(1) == Some(0x78) // 'x'
             }
             // Bitcoin: legacy (25–34 chars), P2SH (34), or bech32 (42–62).
-            ChainType::Bitcoin => len >= 25 && len <= 62,
+            ChainType::Bitcoin => (25..=62).contains(&len),
             // Solana: base58-encoded public key, typically 32–44 chars.
-            ChainType::Solana => len >= 32 && len <= 44,
+            ChainType::Solana => (32..=44).contains(&len),
         }
     }
 }
