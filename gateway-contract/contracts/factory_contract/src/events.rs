@@ -1,8 +1,10 @@
 use soroban_sdk::{symbol_short, Address, BytesN, Env, Symbol};
 
 pub const USERNAME_DEPLOYED: Symbol = symbol_short!("USR_DEP");
+#[allow(dead_code)]
 pub const OWNERSHIP_TRANSFERRED: Symbol = symbol_short!("OWN_TRF");
 
+#[allow(deprecated)]
 pub fn emit_username_deployed(
     env: &Env,
     username_hash: &BytesN<32>,
@@ -15,6 +17,8 @@ pub fn emit_username_deployed(
     );
 }
 
+#[allow(dead_code)]
+#[allow(deprecated)]
 pub fn emit_ownership_transferred(
     env: &Env,
     username_hash: &BytesN<32>,
