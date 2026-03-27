@@ -1,4 +1,5 @@
 export { MerkleProofGenerator } from "./proof";
+export { UsernameHasher } from "./hasher";
 export type {
   CircuitArtifactPaths,
   Groth16Proof,
