@@ -1,0 +1,70 @@
+   Compiling escrow_contract v0.0.0 (C:\Users\amarjeet patel\Desktop\myfolder222\Alien-Gateway\gateway-contract\contracts\escrow_contract)
+warning: unused imports: `Symbol`, `TryFromVal`, and `symbol_short`
+  --> contracts\escrow_contract\src\test.rs:10:29
+   |
+10 |     contract, contractimpl, symbol_short, Address, BytesN, Env, Error, IntoVal, Symbol,
+   |                             ^^^^^^^^^^^^                                        ^^^^^^
+11 |     TryFromVal,
+   |     ^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: use of deprecated method `soroban_sdk::Env::register_stellar_asset_contract`: use [Env::register_stellar_asset_contract_v2]
+  --> contracts\escrow_contract\src\test.rs:47:21
+   |
+47 |     let token = env.register_stellar_asset_contract(token_admin.clone());
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `soroban_sdk::Env::register_stellar_asset_contract`: use [Env::register_stellar_asset_contract_v2]
+   --> contracts\escrow_contract\src\test.rs:340:21
+    |
+340 |     let token = env.register_stellar_asset_contract(token_admin);
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated method `soroban_sdk::Env::register_stellar_asset_contract`: use [Env::register_stellar_asset_contract_v2]
+   --> contracts\escrow_contract\src\test.rs:417:21
+    |
+417 |     let token = env.register_stellar_asset_contract(token_admin);
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `IntoVal`
+  --> contracts\escrow_contract\src\test.rs:10:72
+   |
+10 |     contract, contractimpl, symbol_short, Address, BytesN, Env, Error, IntoVal, Symbol,
+   |                                                                        ^^^^^^^
+
+warning: function `read_vault` is never used
+  --> contracts\escrow_contract\src\test.rs:82:4
+   |
+82 | fn read_vault(env: &Env, contract_id: &Address, id: &BytesN<32>) -> VaultState {
+   |    ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `escrow_contract` (lib test) generated 6 warnings (run `cargo fix --lib -p escrow_contract --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.10s
+     Running unittests src\lib.rs (C:\Users\amarjeet patel\Desktop\myfolder222\Alien-Gateway\gateway-contract\target\debug\deps\escrow_contract-94baa64b1ac1cc88.exe)
+
+running 17 tests
+test test::test_deposit_non_existent_vault ... ok
+test test::test_execute_scheduled_not_found_panics ... ok
+test test::test_deposit_not_owner - should panic ... ok
+test test::test_create_vault_not_owner - should panic ... ok
+test test::test_deposit_invalid_amount ... ok
+test test::test_create_vault_already_exists ... ok
+test test::test_deposit_success ... ok
+test test::test_execute_scheduled_early_panics ... ok
+test test::test_deposit_inactive_vault ... ok
+test test::test_create_vault_success ... ok
+test test::test_schedule_payment_inactive_vault ... ok
+test test::test_execute_scheduled_double_panics ... ok
+test test::test_schedule_payment_insufficient_balance_panics ... ok
+test test::test_schedule_payment_past_release_panics ... ok
+test test::test_execute_scheduled_success ... ok
+test test::test_schedule_payment_success ... ok
+test test::test_schedule_payment_returns_incrementing_ids ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
