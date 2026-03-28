@@ -442,7 +442,7 @@ impl EscrowContract {
             panic_with_error!(&env, EscrowError::IntervalNotElapsed);
         }
 
-        // 3. Load vault state and check balance
+        // 3. Load vault state, verify the vault is active before checking balance.
         let mut state = read_vault_state(&env, &from)
             .unwrap_or_else(|| panic_with_error!(&env, EscrowError::VaultNotFound));
 

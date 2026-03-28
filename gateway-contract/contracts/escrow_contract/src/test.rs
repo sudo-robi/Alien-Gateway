@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use crate::errors::EscrowError;
-use crate::types::{DataKey, ScheduledPayment, VaultConfig, VaultState};
+use crate::types::{AutoPay, DataKey, ScheduledPayment, VaultConfig, VaultState};
 use crate::EscrowContract;
 use crate::EscrowContractClient;
 use soroban_sdk::testutils::{Address as _, Events as _, Ledger, MockAuth, MockAuthInvoke};
@@ -809,6 +809,52 @@ fn test_auto_pay_multiple_vaults_no_interference() {
         assert_ne!(stored_a.amount, stored_b.amount);
         assert_ne!(stored_a.from, stored_b.from);
     });
+}
+
+#[test]
+fn test_trigger_auto_pay_inactive_vault_returns_vault_inactive() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, client, token, _token_admin, from, to) = setup_test(&env);
+
+    let owner = Address::generate(&env);
+    let config = VaultConfig {
+        owner: owner.clone(),
+        token: token.clone(),
+        created_at: 0,
+    };
+    let state = VaultState {
+        balance: 1000,
+        is_active: false,
+    };
+    let auto_pay = AutoPay {
+        from: from.clone(),
+        to: to.clone(),
+        token: token.clone(),
+        amount: 100,
+        interval: 1,
+        last_paid: 0,
+    };
+
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .set(&DataKey::VaultConfig(from.clone()), &config);
+        env.storage()
+            .persistent()
+            .set(&DataKey::VaultState(from.clone()), &state);
+        env.storage()
+            .persistent()
+            .set(&DataKey::AutoPay(from.clone(), 0u64), &auto_pay);
+    });
+
+    env.ledger().set_timestamp(1000);
+
+    let result = client.try_trigger_auto_pay(&from, &0);
+    assert!(matches!(
+        result,
+        Err(Ok(err)) if err == Error::from_contract_error(EscrowError::VaultInactive as u32)
+    ));
 }
 
 // ─── cancel_vault tests ──────────────────────────────────────────────
