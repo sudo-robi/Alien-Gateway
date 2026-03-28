@@ -130,7 +130,7 @@ impl EscrowContract {
 
         // Transfer tokens from caller to the contract first
         let token_client = token::Client::new(&env, &config.token);
-        token_client.transfer(&config.owner, &env.current_contract_address(), &amount);
+        token_client.transfer(&config.owner, env.current_contract_address(), &amount);
 
         // Update state safely
         state.balance = state
