@@ -65,7 +65,7 @@ impl EscrowContract {
         let owner: Option<Address> = env.invoke_contract(
             &registration,
             &Symbol::new(&env, "get_owner"),
-            vec![&env, commitment.clone().into_val(&env)],
+            vec![&env, commitment.into_val(&env)],
         );
         let owner =
             owner.unwrap_or_else(|| panic_with_error!(&env, EscrowError::CommitmentNotRegistered));
@@ -128,17 +128,19 @@ impl EscrowContract {
             panic_with_error!(&env, EscrowError::VaultInactive);
         }
 
-        token::Client::new(&env, &config.token).transfer(
-            &config.owner,
-            env.current_contract_address(),
-            &amount,
-        );
+        // Transfer tokens from caller to the contract first
+        let token_client = token::Client::new(&env, &config.token);
+        token_client.transfer(&config.owner, env.current_contract_address(), &amount);
 
+        // Update state safely
         state.balance = state
             .balance
             .checked_add(amount)
             .expect("vault balance overflow");
         write_vault_state(&env, &commitment, &state);
+
+        // Emit DEPOSIT event.
+        Events::deposit(&env, commitment, amount, state.balance);
     }
 
     /// Schedules a payment from one vault to another.
