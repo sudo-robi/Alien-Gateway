@@ -1,5 +1,4 @@
 export { MerkleProofGenerator } from "./proof";
-export { StellarTxBuilder } from "./tx";
 export {
   FreighterAdapter,
   XBullAdapter,
@@ -20,10 +19,6 @@ export {
 } from "./errors";
 export { registerUsername } from "./register";
 export type {
-  AddStellarAddressParams,
-  BinaryInput,
-  BuiltTransaction,
-  Bytes32Input,
   CircuitArtifactPaths,
   Groth16Proof,
   InclusionInput,
@@ -33,14 +28,7 @@ export type {
   NonInclusionInput,
   NonInclusionProofResult,
   NonInclusionPublicSignals,
-  PublicSignalsInput,
-  RegisterParams,
-  RegisterResolverParams,
-  ResolveParams,
   SignalInput,
-  StellarTxBuilderConfig,
-  SubmitTransactionOptions,
-  TxBuildOptions,
 } from "./types";
 export type { FreighterApi } from "./wallets/freighter";
 export type { WalletAdapter } from "./wallets";
