@@ -2,7 +2,7 @@
 
 mod events;
 
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env, Symbol};
+use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
 
 use events::publish_bid_refunded_event;
 

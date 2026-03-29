@@ -10,8 +10,8 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let alice = soroban_sdk::testutils::Address::generate(&env);
-        let bob = soroban_sdk::testutils::Address::generate(&env);
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
 
         let contract_id = env.register(Auction, ());
         let client = AuctionClient::new(&env, &contract_id);
