@@ -1,0 +1,34 @@
+{
+  "name": "@alien-protocol/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for Alien Protocol - username resolution, proof generation, and payment transactions",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "node --test -r ts-node/register src/__tests__/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "alien-protocol",
+    "zk-proof",
+    "username",
+    "stellar",
+    "sdk"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "snarkjs": "^0.7.0"
+  },
+  "peerDependencies": {
+    "@stellar/stellar-sdk": "^11.0.1"
+  },
+  "devDependencies": {
+    "@stellar/stellar-sdk": "^11.0.1",
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.0.0"
+  }
+}

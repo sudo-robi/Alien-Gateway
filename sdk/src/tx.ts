@@ -6,7 +6,6 @@ import {
   SorobanRpc,
   TransactionBuilder,
   nativeToScVal,
-  type Transaction,
   type xdr,
 } from "@stellar/stellar-sdk";
 
@@ -18,7 +17,6 @@ import type {
   PublicSignalsInput,
   RegisterParams,
   RegisterResolverParams,
-  ResolveParams,
   StellarTxBuilderConfig,
   SubmitTransactionOptions,
   TxBuildOptions,
@@ -62,9 +60,7 @@ export class StellarTxBuilder {
   }
 
   public async buildResolve(usernameHash: Bytes32Input, options: TxBuildOptions = {}): Promise<BuiltTransaction> {
-    return this.buildPreparedTransaction("resolve_stellar", [toScBytes32(usernameHash)], {
-      ...options,
-    });
+    return this.buildPreparedTransaction("resolve_stellar", [toScBytes32(usernameHash)], options);
   }
 
   public async submitTransaction(

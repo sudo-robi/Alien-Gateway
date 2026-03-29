@@ -30,18 +30,18 @@ test(
       defaultSource: source,
     });
 
-    const commitment = new Uint8Array(32).fill(7);
+    const bytes32 = new Uint8Array(32).fill(7);
 
     const registerTx = await builder.buildRegister({
       caller: source,
-      commitment,
+      commitment: bytes32,
     });
     const addAddressTx = await builder.buildAddStellarAddress({
       caller: source,
-      usernameHash: commitment,
+      usernameHash: bytes32,
       stellarAddress: source,
     });
-    const resolveTx = await builder.buildResolve(commitment);
+    const resolveTx = await builder.buildResolve(bytes32);
 
     for (const built of [registerTx, addAddressTx, resolveTx]) {
       const parsed = TransactionBuilder.fromXDR(built.xdr, env.networkPassphrase);
